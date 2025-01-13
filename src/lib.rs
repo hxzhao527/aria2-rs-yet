@@ -1,6 +1,6 @@
 pub mod call;
 mod error;
-mod options;
+pub mod options;
 mod ws;
 
 /// https://www.jsonrpc.org/specification
@@ -29,8 +29,6 @@ mod jsonrpc {
         Err { id: I, error: Error },
     }
 }
-
-
 
 
 pub use error::Error;

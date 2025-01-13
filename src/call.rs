@@ -78,6 +78,30 @@ pub struct AddUri {
     pub position: Option<i32>,
 }
 
+impl AddUri{
+    pub fn new<S: Into<String>>(uris: Vec<S>, options: Option<Aria2Options>, position: Option<i32>) -> Self {
+        Self::uris(uris).options(options).position(position)
+    }
+
+    pub fn uris<S: Into<String>>(uris: Vec<S>) -> Self {
+        Self {
+            uris: uris.into_iter().map(|s| s.into()).collect(),
+            options: None,
+            position: None,
+        }
+    }
+
+    pub fn options(mut self, options: Option<Aria2Options>) -> Self {
+        self.options = options;
+        self
+    }
+
+    pub fn position(mut self, position: Option<i32>) -> Self {
+        self.position = position;
+        self
+    }
+}
+
 impl Call for AddUri {
     type Response = GidReply;
 

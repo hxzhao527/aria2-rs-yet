@@ -1,5 +1,6 @@
 use aria2_rs_yet::{Client, ConnectionMeta, Result};
-use aria2_rs_yet::call::{SystemListMethods, GetVersion};
+use aria2_rs_yet::call::{SystemListMethods, GetVersion, AddUri};
+use aria2_rs_yet::options::Aria2Options;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -17,6 +18,20 @@ async fn main() -> Result<()> {
 
     let version = client.call(GetVersion).await?;
     println!("{:?}", version);
+
+    let gid = client.call(
+        AddUri::new(
+            vec!["https://github.com/hxzhao527/aria2-rs-yet/archive/refs/heads/master.zip"],
+            Some(Aria2Options{
+                dir: Some("/tmp".to_string()),
+                out: Some("aria2-rs-yet.zip".to_string()),
+                ..Default::default()
+            }),
+            None,
+        )
+    ).await?;
+    println!("{:?}", gid);
+
     // drop(client); // uncomment this line to see the client disconnecting
     println!("waiting for ctrl-c");
     tokio::signal::ctrl_c().await.unwrap();
