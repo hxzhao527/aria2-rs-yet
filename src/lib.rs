@@ -32,7 +32,7 @@ mod jsonrpc {
 
 
 pub use error::Error;
-pub use ws::{Client, ConnectionMeta};
+pub use ws::{Client, ConnectionMeta, Notification};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
