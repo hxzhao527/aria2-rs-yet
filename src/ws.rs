@@ -2,6 +2,8 @@ use futures_util::{stream::SplitSink, SinkExt, StreamExt};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{timeout, Duration};
 use tokio_tungstenite::tungstenite;
+use std::ops::Deref;
+use std::sync::Arc;
 
 use crate::call::Call;
 use crate::error::Error;
@@ -12,7 +14,7 @@ type WSMessage = tokio_tungstenite::tungstenite::Message;
 type WSStream =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Notification {
     DownloadStart(String),
     DownloadPause(String),
@@ -73,14 +75,37 @@ impl tungstenite::client::IntoClientRequest for &ConnectionMeta{
     }
 }
 
+#[derive(Clone)]
 pub struct Client {
+    inner: Arc<ClientInner>,
+}
+
+impl Deref for Client {
+    type Target = ClientInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl Client {
+    pub async fn connect(meta: ConnectionMeta) -> Result<(Self, mpsc::UnboundedReceiver<Notification>)>{
+        let (inner, notify_rx) = ClientInner::connect(meta).await?;
+        let client = Client {
+            inner: Arc::new(inner),
+        };
+        return Ok((client, notify_rx));
+    }
+}
+
+pub struct ClientInner {
     message_tx: mpsc::Sender<RPCRequest>,
     token: Option<String>,
     _drop_rx: oneshot::Receiver<()>,
 }
 
-impl Client {
-    pub async fn connect(
+impl ClientInner {
+    async fn connect(
         meta: ConnectionMeta,
     ) -> Result<(Self, mpsc::UnboundedReceiver<Notification>)> {
         let (ws, _) = tokio_tungstenite::connect_async(&meta)
