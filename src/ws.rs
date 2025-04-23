@@ -94,7 +94,7 @@ impl Client {
         let client = Client {
             inner: Arc::new(inner),
         };
-        return Ok((client, notify_rx));
+        Ok((client, notify_rx))
     }
 }
 

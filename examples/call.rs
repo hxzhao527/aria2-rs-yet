@@ -1,5 +1,5 @@
 use aria2_rs_yet::{Client, ConnectionMeta, Result};
-use aria2_rs_yet::call::{SystemListMethods, GetVersion, AddUri};
+use aria2_rs_yet::call::{SystemListMethods, GetVersion, AddUri, TellStatus};
 use aria2_rs_yet::options::Aria2Options;
 
 #[tokio::main]
@@ -31,6 +31,11 @@ async fn main() -> Result<()> {
         )
     ).await?;
     println!("{:?}", gid);
+
+    let status = client.call(
+        TellStatus::new(gid)
+    ).await?;
+    println!("{:?}", status);
 
     // drop(client); // uncomment this line to see the client disconnecting
     println!("waiting for ctrl-c");
