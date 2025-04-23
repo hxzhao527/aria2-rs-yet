@@ -1,6 +1,6 @@
 [package]
 name = "aria2-rs-yet"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 authors = ["hxzhao527 <haoxiangzhao@outlook.com>"]
 description = "Yet Another Aria2 JSON-RPC Client."
