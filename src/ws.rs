@@ -140,6 +140,8 @@ impl ClientInner {
             Some(params) => Some(serde_json::to_value(params).map_err(Error::Encode)?),
             None => None,
         };
+        
+        tracing::debug!("call method: {}, params: {:?}", method, params);
 
         let request = RPCRequest {
             params,
