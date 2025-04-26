@@ -149,7 +149,7 @@ pub struct VersionReply {
     pub enabled_features: Vec<String>,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
 pub enum TellStatusField {
     Gid,
@@ -228,7 +228,75 @@ pub enum TaskStatus {
 #[derive(Debug)]
 pub struct TellStatus {
     pub gid: String,
-    pub keys: Option<Vec<TellStatusField>>,
+    pub keys: Option<std::collections::HashSet<TellStatusField>>,
+}
+
+macro_rules! tell_star {
+    ($name: ident) => {
+        impl $name {
+            /// replace all fields wanted to be returned
+            pub fn keys<I, F>(mut self, keys: Option<I>) -> Result<Self, F::Error>
+            where
+                I: IntoIterator<Item = F>,
+                F: TryInto<TellStatusField, Error = &'static str>,
+            {
+                self.keys = None;
+
+                if let Some(keys) = keys {
+                    let mut temp = std::collections::HashSet::new();
+                    for field in keys.into_iter() {
+                        match field.try_into() {
+                            Ok(f) => {
+                                temp.insert(f);
+                            }
+                            Err(e) => return Err(e),
+                        }
+                    }
+                    self.keys = Some(temp);
+                }
+                Ok(self)
+            }
+
+            /// add key
+            pub fn key<F>(self, key: F) -> Result<Self, F::Error>
+            where
+                F: TryInto<TellStatusField, Error = &'static str>,
+            {
+                let field = key.try_into()?;
+                Ok(self.field(field))
+            }
+
+            pub fn field<F>(mut self, field: F) -> Self
+            where
+                F: Into<TellStatusField>,
+            {
+                if let Some(ref mut keys) = self.keys {
+                    keys.insert(field.into());
+                } else {
+                    let mut keys = std::collections::HashSet::new();
+                    keys.insert(field.into());
+                    self.keys = Some(keys);
+                }
+                self
+            }
+
+            pub fn fields<I, F>(mut self, fields: Option<I>) -> Self
+            where
+                I: IntoIterator<Item = F>,
+                F: Into<TellStatusField>,
+            {
+                self.keys = None;
+                if let Some(fields) = fields {
+                    let mut keys = std::collections::HashSet::new();
+                    for field in fields.into_iter() {
+                        keys.insert(field.into());
+                    }
+                    self.keys = Some(keys);
+                }
+                self
+            }
+        }
+    };
 }
 
 impl TellStatus {
@@ -240,60 +308,17 @@ impl TellStatus {
         }
     }
 
-    /// replace all fields wanted to be returned
-    pub fn keys<I, F>(mut self, keys: Option<I>) -> Result<Self, F::Error>
-    where
-        I: IntoIterator<Item = F>,
-        F: TryInto<TellStatusField, Error = &'static str>,
-    {
-        let mut temp = vec![];
-        if let Some(keys) = keys {
-            for field in keys.into_iter() {
-                match field.try_into() {
-                    Ok(f) => temp.push(f),
-                    Err(e) => return Err(e),
-                }
-            }
-        }
-
-        self.keys = Some(temp);
-        Ok(self)
-    }
-
-    /// add key
-    /// ignore invalid key
-    pub fn key<F>(self, key: F) -> Result<Self, F::Error>
-    where
-        F: TryInto<TellStatusField, Error = &'static str>,
-    {
-        let field = key.try_into()?;
-        Ok(self.field(field))
-    }
-
     pub fn new_with_fields<G, I, F>(gid: G, fields: I) -> Self
     where
         G: Into<String>,
         I: IntoIterator<Item = F>,
         F: Into<TellStatusField>,
     {
-        Self {
-            gid: gid.into(),
-            keys: Some(fields.into_iter().map(|f| f.into()).collect()),
-        }
-    }
-
-    pub fn field<F>(mut self, field: F) -> Self
-    where
-        F: Into<TellStatusField>,
-    {
-        if let Some(ref mut keys) = self.keys {
-            keys.push(field.into());
-        } else {
-            self.keys = Some(vec![field.into()]);
-        }
-        self
+        Self::new(gid).fields(Some(fields))
     }
 }
+
+tell_star!(TellStatus);
 
 #[serde_as]
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -360,6 +385,174 @@ impl Call for TellStatus {
     fn serialize_params<S: SerializeSeq>(&self, serializer: &mut S) -> Result<(), S::Error> {
         serializer.serialize_element(&self.gid)?;
         option_element!(self.keys, serializer);
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct TellActive {
+    keys: Option<std::collections::HashSet<TellStatusField>>,
+}
+
+impl TellActive {
+    pub fn new() -> Self {
+        Self { keys: None }
+    }
+
+    pub fn new_with_fields<I, F>(fields: I) -> Self
+    where
+        I: IntoIterator<Item = F>,
+        F: Into<TellStatusField>,
+    {
+        Self::new().fields(Some(fields))
+    }
+}
+
+tell_star!(TellActive);
+
+
+impl Call for TellActive {
+    type Response = Vec<TellStatusReply>;
+
+    fn method(&self) -> &'static str {
+        "aria2.tellActive"
+    }
+
+    fn serialize_params<S: SerializeSeq>(&self, serializer: &mut S) -> Result<(), S::Error> {
+        option_element!(self.keys, serializer);
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct TellWaiting {
+    ///If offset is a positive integer, this method returns downloads in the range of [offset, offset + num).
+    /// 
+    /// offset can be a negative integer. offset == -1 points last download in the waiting queue and offset == -2 points the download before the last download, and so on.
+    /// Downloads in the response are in reversed order then.
+    pub offset: i32,
+    pub num: i32,
+    keys: Option<std::collections::HashSet<TellStatusField>>,
+}
+impl TellWaiting {
+    pub fn new(offset: i32, num: i32) -> Self {
+        Self {
+            offset,
+            num,
+            keys: None,
+        }
+    }
+
+    pub fn new_with_fields<I, F>(offset: i32, num: i32, fields: I) -> Self
+    where
+        I: IntoIterator<Item = F>,
+        F: Into<TellStatusField>,
+    {
+        Self::new(offset, num).fields(Some(fields))
+    }
+}
+
+tell_star!(TellWaiting);
+
+
+impl Call for TellWaiting {
+    type Response = Vec<TellStatusReply>;
+
+    fn method(&self) -> &'static str {
+        "aria2.tellWaiting"
+    }
+
+    fn serialize_params<S: SerializeSeq>(&self, serializer: &mut S) -> Result<(), S::Error> {
+        serializer.serialize_element(&self.offset)?;
+        serializer.serialize_element(&self.num)?;
+        option_element!(self.keys, serializer);
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct TellStopped {
+    pub offset: i32,
+    pub num: i32,
+    keys: Option<std::collections::HashSet<TellStatusField>>,
+}
+
+impl TellStopped {
+    pub fn new(offset: i32, num: i32) -> Self {
+        Self {
+            offset,
+            num,
+            keys: None,
+        }
+    }
+
+    pub fn new_with_fields<I, F>(offset: i32, num: i32, fields: I) -> Self
+    where
+        I: IntoIterator<Item = F>,
+        F: Into<TellStatusField>,
+    {
+        Self::new(offset, num).fields(Some(fields))
+    }
+}
+tell_star!(TellStopped);
+
+
+impl Call for TellStopped {
+    type Response = Vec<TellStatusReply>;
+
+    fn method(&self) -> &'static str {
+        "aria2.tellStopped"
+    }
+
+    fn serialize_params<S: SerializeSeq>(&self, serializer: &mut S) -> Result<(), S::Error> {
+        serializer.serialize_element(&self.offset)?;
+        serializer.serialize_element(&self.num)?;
+        option_element!(self.keys, serializer);
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct GetUris {
+    pub gid: String,
+}
+
+impl GetUris {
+    pub fn new<G: Into<String>>(gid: G) -> Self {
+        Self { gid: gid.into() }
+    }
+}
+impl Call for GetUris {
+    type Response = Vec<TellStatusReplyUri>;
+
+    fn method(&self) -> &'static str {
+        "aria2.getUris"
+    }
+
+    fn serialize_params<S: SerializeSeq>(&self, serializer: &mut S) -> Result<(), S::Error> {
+        serializer.serialize_element(&self.gid)?;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct GetFiles {
+    pub gid: String,
+}
+impl GetFiles {
+    pub fn new<G: Into<String>>(gid: G) -> Self {
+        Self { gid: gid.into() }
+    }
+}
+impl Call for GetFiles {
+    type Response = Vec<TellStatusReplyFile>;
+
+    fn method(&self) -> &'static str {
+        "aria2.getFiles"
+    }
+
+    fn serialize_params<S: SerializeSeq>(&self, serializer: &mut S) -> Result<(), S::Error> {
+        serializer.serialize_element(&self.gid)?;
         Ok(())
     }
 }
